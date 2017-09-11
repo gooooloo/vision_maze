@@ -58,7 +58,7 @@ def create_commands(session, num_workers, log_dir, shell='bash'):
 
 def run():
     args = parser.parse_args()
-    cmds, notes = create_commands("a3c", args.num_workers, LOG_DIR)
+    cmds, notes = create_commands("fun", args.num_workers, LOG_DIR)
     print("Executing the following commands:")
     print("\n".join(cmds))
     print("")

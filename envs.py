@@ -2,8 +2,6 @@ import gym
 import logging
 from collections import deque
 import numpy as np
-import gym
-import gym.spaces as spaces
 import vision_maze
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -21,7 +19,17 @@ VISUALISED_WORKERS = []  # e.g. [0] or [1,2]
 
 _N_AVERAGE = 100
 
-VSTR = 'V1'
+VSTR = 'fun.V1'
+
+class feudal_config():
+    alpha = .5
+    vf_hidden_size = 128
+    k = 16 #Dimensionality of w
+    g_dim = 256
+    c = 10
+    beta_start = .01
+    beta_end = .001
+    decay_steps = 50000000
 
 
 class MyEnv:
@@ -68,24 +76,6 @@ class MyEnv:
             print(i)
 
         return s, r, t, i
-
-
-class OneRoundDeterministicRewardBoxObsEnv(gym.Env):
-    def __init__(self, obs_shape=(64,64,1)):
-        self.action_space = spaces.Discrete(2)
-        self.observation_space = spaces.Box(low=0, high=0, shape=obs_shape)
-        self._obs = np.zeros(obs_shape)
-
-    def _step(self, action):
-        assert self.action_space.contains(action)
-        reward = 1 if action == 1 and np.random.randint(2) == 1 else 0
-        return self._obs, reward, True, {}
-
-    def _reset(self):
-        return self._obs
-
-    def _render(self, mode, close):
-        pass
 
 
 def create_env(task_id):

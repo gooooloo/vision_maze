@@ -2,7 +2,7 @@ from __future__ import print_function
 from collections import namedtuple
 import numpy as np
 import tensorflow as tf
-from model import LSTMPolicy
+from model import FeudalPolicy
 import six.moves.queue as queue
 import scipy.signal
 import threading
@@ -18,20 +18,18 @@ given a rollout, compute its returns and the advantage
 """
     batch_si = np.asarray(rollout.states)
     batch_a = np.asarray(rollout.actions)
+
     rewards = np.asarray(rollout.rewards)
     vpred_t = np.asarray(rollout.values + [rollout.r])
-
     rewards_plus_v = np.asarray(rollout.rewards + [rollout.r])
     batch_r = discount(rewards_plus_v, gamma)[:-1]
-    delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
-    # this formula for the advantage comes "Generalized Advantage Estimation":
-    # https://arxiv.org/abs/1506.02438
-    batch_adv = discount(delta_t, gamma * lambda_)
 
-    features = rollout.features[0]
-    return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal, features)
+    batch_s = np.asarray(rollout.ss)
+    batch_g = np.asarray(rollout.gs)
+    features = rollout.features
+    return Batch(batch_si, batch_a, batch_r, rollout.terminal,batch_s,batch_g, features)
 
-Batch = namedtuple("Batch", ["si", "a", "adv", "r", "terminal", "features"])
+Batch = namedtuple("Batch", ["obs", "a", "returns", "terminal", "s", "g", "features"])
 
 class PartialRollout(object):
     """
@@ -43,17 +41,21 @@ once it has processed enough steps.
         self.actions = []
         self.rewards = []
         self.values = []
+        self.ss = []
+        self.gs = []
+        self.features = []
         self.r = 0.0
         self.terminal = False
-        self.features = []
 
-    def add(self, state, action, reward, value, terminal, features):
+    def add(self, state, action, reward, value,g,s, terminal, features):
         self.states += [state]
         self.actions += [action]
         self.rewards += [reward]
         self.values += [value]
         self.terminal = terminal
         self.features += [features]
+        self.gs += [g]
+        self.ss += [s]
 
     def extend(self, other):
         assert not self.terminal
@@ -61,6 +63,8 @@ once it has processed enough steps.
         self.actions.extend(other.actions)
         self.rewards.extend(other.rewards)
         self.values.extend(other.values)
+        self.gs.extend(other.gs)
+        self.ss.extend(other.ss)
         self.r = other.r
         self.terminal = other.terminal
         self.features.extend(other.features)
@@ -110,7 +114,7 @@ the policy, and as long as the rollout exceeds a certain length, the thread
 runner appends the policy to the queue.
 """
     last_state = env.reset()
-    last_features = policy.get_initial_features()
+    last_c_g,last_features = policy.get_initial_features()
     length = 0
     rewards = 0
 
@@ -119,15 +123,17 @@ runner appends the policy to the queue.
         rollout = PartialRollout()
 
         for _ in range(num_local_steps):
-            fetched = policy.act(last_state, *last_features)
-            action, value_, features = fetched[0], fetched[1], fetched[2:]
+            fetched = policy.act(last_state,last_c_g, *last_features)
+            action, value_, g,s,last_c_g,features = fetched[0], fetched[1], \
+                                                    fetched[2], fetched[3], \
+                                                    fetched[4], fetched[5:]
             # argmax to convert from one-hot
             state, reward, terminal, info = env.step(action.argmax())
             if render:
                 env.render()
 
             # collect the experience
-            rollout.add(last_state, action, reward, value_, terminal, last_features)
+            rollout.add(last_state, action, reward, value_, g, s, terminal, last_features)
             length += 1
             rewards += reward
 
@@ -141,22 +147,25 @@ runner appends the policy to the queue.
                 summary_writer.add_summary(summary, policy.global_step.eval())
                 summary_writer.flush()
 
-            if terminal:
+            timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')  \
+                            if env.spec and env.spec.tags else 99999999999999
+            if terminal or length >= timestep_limit:
                 terminal_end = True
-                last_state = env.reset()
-                last_features = policy.get_initial_features()
+                if length >= timestep_limit or not env.metadata.get('semantics.autoreset'):
+                    last_state = env.reset()
+                last_c_g,last_features = policy.get_initial_features()
                 length = 0
                 rewards = 0
                 break
 
         if not terminal_end:
-            rollout.r = policy.value(last_state, *last_features)
+            rollout.r = policy.value(last_state, last_c_g, *last_features)
 
         # once we have enough experience, yield it, and have the ThreadRunner place it on a queue
         yield rollout
 
 class A3C(object):
-    def __init__(self, env, task, visualise):
+    def __init__(self, env, task, visualise, fun_config):
         """
 An implementation of the A3C algorithm that is reasonably well-tuned for the VNC environments.
 Below, we will have a modest amount of complexity due to the way TensorFlow handles data parallelism.
@@ -169,70 +178,27 @@ should be computed.
         worker_device = "/job:worker/task:{}/cpu:0".format(task)
         with tf.device(tf.train.replica_device_setter(1, worker_device=worker_device)):
             with tf.variable_scope("global"):
-                self.network = LSTMPolicy(env.observation_space.shape, env.action_space.n)
                 self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
                                                    trainable=False)
+                self.network = FeudalPolicy(env.observation_space.shape, env.action_space.n,self.global_step, fun_config)
 
         with tf.device(worker_device):
             with tf.variable_scope("local"):
-                self.local_network = pi = LSTMPolicy(env.observation_space.shape, env.action_space.n)
+                self.local_network = pi = FeudalPolicy(env.observation_space.shape, env.action_space.n,self.global_step, fun_config)
                 pi.global_step = self.global_step
+            self.policy = pi
+            # build runner thread for collecting rollouts
+            self.runner = RunnerThread(env, self.policy, 20,visualise)
 
-            self.ac = tf.placeholder(tf.float32, [None, env.action_space.n], name="ac")
-            self.adv = tf.placeholder(tf.float32, [None], name="adv")
-            self.r = tf.placeholder(tf.float32, [None], name="r")
-
-            log_prob_tf = tf.nn.log_softmax(pi.logits)
-            prob_tf = tf.nn.softmax(pi.logits)
-
-            # the "policy gradients" loss:  its derivative is precisely the policy gradient
-            # notice that self.ac is a placeholder that is provided externally.
-            # adv will contain the advantages, as calculated in process_rollout
-            pi_loss = - tf.reduce_sum(tf.reduce_sum(log_prob_tf * self.ac, [1]) * self.adv)
-
-            # loss of value function
-            vf_loss = 0.5 * tf.reduce_sum(tf.square(pi.vf - self.r))
-            entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
-
-            bs = tf.to_float(tf.shape(pi.x)[0])
-            self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
-
-            # 20 represents the number of "local steps":  the number of timesteps
-            # we run the policy before we update the parameters.
-            # The larger local steps is, the lower is the variance in our policy gradients estimate
-            # on the one hand;  but on the other hand, we get less frequent parameter updates, which
-            # slows down learning.  In this code, we found that making local steps be much
-            # smaller than 20 makes the algorithm more difficult to tune and to get to work.
-            self.runner = RunnerThread(env, pi, 20, visualise)
-
-
-            grads = tf.gradients(self.loss, pi.var_list)
-
-            if use_tf12_api:
-                tf.summary.scalar("model/policy_loss", pi_loss/bs)
-                tf.summary.scalar("model/value_loss", vf_loss/bs)
-                tf.summary.scalar("model/entropy", entropy/bs)
-                # tf.summary.image("model/state", tf.concat(3,[pi.x,pi.x]))
-                tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
-                tf.summary.scalar("model/var_global_norm", tf.global_norm(pi.var_list))
-                self.summary_op = tf.summary.merge_all()
-
-            else:
-                tf.scalar_summary("model/policy_loss", pi_loss/bs)
-                tf.scalar_summary("model/value_loss", vf_loss/bs)
-                tf.scalar_summary("model/entropy", entropy/bs)
-                #tf.image_summary("model/state", pi.x)
-                tf.scalar_summary("model/grad_global_norm", tf.global_norm(grads))
-                tf.scalar_summary("model/var_global_norm", tf.global_norm(pi.var_list))
-                self.summary_op = tf.merge_all_summaries()
-
+            # formulate gradients
+            grads = tf.gradients(pi.loss, pi.var_list)
             grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
             # copy weights from the parameter server to the local model
             self.sync = tf.group(*[v1.assign(v2) for v1, v2 in zip(pi.var_list, self.network.var_list)])
 
             grads_and_vars = list(zip(grads, self.network.var_list))
-            inc_step = self.global_step.assign_add(tf.shape(pi.x)[0])
+            inc_step = self.global_step.assign_add(tf.shape(pi.obs)[0])
 
             # each worker has a different set of adam optimizer parameters
             opt = tf.train.AdamOptimizer(1e-4)
@@ -265,23 +231,39 @@ server.
 
         sess.run(self.sync)  # copy weights from shared to local
         rollout = self.pull_batch_from_queue()
-        batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-
+        batch = process_rollout(rollout, gamma=.99)
+        batch = self.policy.update_batch(batch)
         should_compute_summary = self.task == 0 and self.local_steps % 11 == 0
 
         if should_compute_summary:
-            fetches = [self.summary_op, self.train_op, self.global_step]
+            fetches = [self.policy.summary_op, self.train_op, self.global_step]
         else:
             fetches = [self.train_op, self.global_step]
 
         feed_dict = {
-            self.local_network.x: batch.si,
-            self.ac: batch.a,
-            self.adv: batch.adv,
-            self.r: batch.r,
-            self.local_network.state_in[0]: batch.features[0],
-            self.local_network.state_in[1]: batch.features[1],
+            self.policy.obs: batch.obs,
+            self.network.obs: batch.obs,
+
+            self.policy.ac: batch.a,
+            self.network.ac: batch.a,
+
+            self.policy.r: batch.returns,
+            self.network.r: batch.returns,
+
+            self.policy.s_diff: batch.s_diff,
+            self.network.s_diff: batch.s_diff,
+
+            self.policy.prev_g: batch.gsum,
+            self.network.prev_g: batch.gsum,
+
+            self.policy.ri: batch.ri,
+            self.network.ri: batch.ri
         }
+
+        for i in range(len(self.policy.state_in)):
+            feed_dict[self.policy.state_in[i]] = batch.features[i]
+            feed_dict[self.network.state_in[i]] = batch.features[i]
+
 
         fetched = sess.run(fetches, feed_dict=feed_dict)
 

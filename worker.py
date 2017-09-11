@@ -7,7 +7,7 @@ import time
 import os
 from a3c import A3C
 from envs import create_env, PS_IP, PS_PORT, NUM_GLOBAL_STEPS, SAVE_MODEL_SECS, SAVE_SUMMARIES_SECS, LOG_DIR, \
-    NUM_WORKER, VISUALISED_WORKERS
+    NUM_WORKER, VISUALISED_WORKERS, feudal_config
 import distutils.version
 use_tf12_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('0.12.0')
 
@@ -24,7 +24,7 @@ class FastSaver(tf.train.Saver):
 def run(args, server):
     env = create_env(args.task)
     visualise = args.task in VISUALISED_WORKERS
-    trainer = A3C(env, args.task, visualise)
+    trainer = A3C(env, args.task, visualise, feudal_config)
 
     # Variable names that start with "local" are not saved in checkpoints.
     if use_tf12_api:
