@@ -19,7 +19,7 @@ VISUALISED_WORKERS = []  # e.g. [0] or [1,2]
 
 _N_AVERAGE = 100
 
-VSTR = 'fun.V1'
+VSTR = 'fun.V2'
 
 class feudal_config():
     alpha = .5
