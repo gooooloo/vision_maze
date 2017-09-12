@@ -17,6 +17,7 @@ class VisionMazeEnv(gym.Env):
         obs_space = (self.max_pos + 1, self.max_pos + 1, 1)
         self.observation_space = spaces.Box(low=0, high=1, shape=obs_space)
         self.goal_reward = 1
+        self.not_moved_penalty = -0.001
         self.goal_state = [self.max_pos, self.max_pos]
         self._obs = np.zeros(obs_space)
         self.max_steps = 10
@@ -54,6 +55,8 @@ class VisionMazeEnv(gym.Env):
         r, done = 0, False
         if x == self.goal_state[0] and y == self.goal_state[1]:
             r, done = self.goal_reward, True
+        elif x == ox and y == oy:
+            r = self.not_moved_penalty
         else:
             pass
 
