@@ -21,7 +21,7 @@ VISUALISED_WORKERS = []  # e.g. [0] or [1,2]
 
 _N_AVERAGE = 100
 
-VSTR = 'escape.room.V3.revisit'
+VSTR = 'escape.room.V4'
 
 
 class MyEnv:

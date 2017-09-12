@@ -50,9 +50,10 @@ class LSTMPolicy(object):
 
         x = flatten(x)
 
-        x = tf.nn.elu(linear(x, 256, "fc1", normalized_columns_initializer(0.01)))
-        x = tf.nn.elu(linear(x, 64, "fc2", normalized_columns_initializer(0.01)))
-        x = tf.nn.elu(linear(x, 16, "fc3", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 2560, "fc1", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 256, "fc2", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 64, "fc3", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 16, "fc4", normalized_columns_initializer(0.01)))
         self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
         self.vf = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
         self.sample = categorical_sample(self.logits, ac_space)[0, :]
