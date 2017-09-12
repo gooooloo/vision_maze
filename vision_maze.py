@@ -81,7 +81,7 @@ class VisionMazeEnv(gym.Env):
             pass
 
         self.state = np.array([x, y])
-        return self._get_obs(), r, done, {}
+        return self._get_obs(), r, done, {'succ':done}
 
     def _step_up(self, x, y):
         ny = y + 1
