@@ -52,7 +52,7 @@ class LSTMPolicy(object):
             x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         x = flatten(x)
 
-        x = linear(x, 32, "fc", normalized_columns_initializer(0.01))
+        x = tf.nn.elu(linear(x, 32, "fc", normalized_columns_initializer(0.01)))
         self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
         self.vf = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
         self.sample = categorical_sample(self.logits, ac_space)[0, :]
