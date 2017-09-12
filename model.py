@@ -48,11 +48,11 @@ class LSTMPolicy(object):
     def __init__(self, ob_space, ac_space):
         self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
 
-        for i in range(3):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         x = flatten(x)
 
-        x = tf.nn.elu(linear(x, 32, "fc", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 32, "fc1", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 32, "fc2", normalized_columns_initializer(0.01)))
+        x = tf.nn.elu(linear(x, 32, "fc3", normalized_columns_initializer(0.01)))
         self.logits = linear(x, ac_space, "action", normalized_columns_initializer(0.01))
         self.vf = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
         self.sample = categorical_sample(self.logits, ac_space)[0, :]

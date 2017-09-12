@@ -4,7 +4,7 @@ from gym import spaces
 import numpy as np
 
 class VisionMazeEnv(gym.Env):
-    def __init__(self, room_length=5, num_rooms_per_side=5):
+    def __init__(self, room_length=3, num_rooms_per_side=1):
         assert room_length % 2 == 1, "room_length must be odd"
         assert room_length >= 3, "room_length must be greater than 3"
         assert num_rooms_per_side >= 1, "must have at least 1 room"
@@ -20,7 +20,7 @@ class VisionMazeEnv(gym.Env):
         self.not_moved_penalty = -1
         self.goal_state = [self.max_pos, self.max_pos]
         self._obs = np.zeros(obs_space)
-        self.max_steps = 999
+        self.max_steps = 10
         self._reset()
 
     def _get_obs(self):
