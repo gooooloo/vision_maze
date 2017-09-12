@@ -21,7 +21,7 @@ VISUALISED_WORKERS = []  # e.g. [0] or [1,2]
 
 _N_AVERAGE = 100
 
-VSTR = 'escape.room.V3'
+VSTR = 'escape.room.V3.revisit'
 
 
 class MyEnv:
@@ -34,6 +34,8 @@ class MyEnv:
         self._steps_last_n_eps = deque(maxlen=_N_AVERAGE)
         self._rewards_last_n_eps = deque(maxlen=_N_AVERAGE)
         self._succ_last_n_eps = deque(maxlen=_N_AVERAGE)
+        self._wrong_room_last_n_eps = deque(maxlen=_N_AVERAGE)
+        self._wrong_action_last_n_eps = deque(maxlen=_N_AVERAGE)
 
         self.spec = env.spec
         self.observation_space = env.observation_space
@@ -60,6 +62,8 @@ class MyEnv:
             self._steps_last_n_eps.append(self._ep_steps)
             self._rewards_last_n_eps.append(np.sum(self._ep_rewards))
             self._succ_last_n_eps.append(1 if oi['succ'] else 0)
+            self._wrong_room_last_n_eps.append(1 if oi['wrong_room'] else 0)
+            self._wrong_action_last_n_eps.append(oi['wrong_action'])
 
             i['{}/ep_count'.format(VSTR)] = self._ep_count
             i['{}/ep_steps'.format(VSTR)] = self._steps_last_n_eps[-1]
@@ -67,6 +71,8 @@ class MyEnv:
             i['{}/aver_steps_{}'.format(VSTR, _N_AVERAGE)] = np.average(self._steps_last_n_eps)
             i['{}/aver_rewards_{}'.format(VSTR, _N_AVERAGE)] = np.average(self._rewards_last_n_eps)
             i['{}/aver_succ_{}'.format(VSTR, _N_AVERAGE)] = np.average(self._succ_last_n_eps)
+            i['{}/aver_wrong_room_{}'.format(VSTR, _N_AVERAGE)] = np.average(self._wrong_room_last_n_eps)
+            i['{}/aver_wrong_action_{}'.format(VSTR, _N_AVERAGE)] = np.average(self._wrong_action_last_n_eps)
 
             print(i)
 
