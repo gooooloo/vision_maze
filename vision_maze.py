@@ -35,8 +35,8 @@ class VisionMazeEnv(gym.Env):
         y = np.random.randint(self.max_pos)
         self.state = np.array([x, y])
 
-        self.original_room_x = room_x = x % self.room_length
-        self.original_room_y = room_y = y % self.room_length
+        self.original_room_x = room_x = x // self.room_length
+        self.original_room_y = room_y = y // self.room_length
 
         self.target_room_x, self.target_room_y = room_x + 1, room_y  # rightside room
         if self.target_room_x == self.num_rooms_per_side:
@@ -67,8 +67,8 @@ class VisionMazeEnv(gym.Env):
         else:
             x = self._step_left(x, y)
 
-        room_x = x % self.room_length
-        room_y = y % self.room_length
+        room_x = x // self.room_length
+        room_y = y // self.room_length
 
         r, done = 0, False
         if room_x == self.target_room_x and room_y == self.target_room_y:
