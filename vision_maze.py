@@ -73,7 +73,7 @@ class VisionMazeEnv(gym.Env):
         r, done = 0, False
         if room_x == self.target_room_x and room_y == self.target_room_y:
             r, done = self.goal_reward, True
-        if room_x != self.original_room_x or room_y != self.original_room_y:
+        elif room_x != self.original_room_x or room_y != self.original_room_y:
             r, done = self.wrong_room_penalty, True
         elif x == ox and y == oy:
             r = self.not_moved_penalty
