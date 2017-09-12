@@ -20,7 +20,7 @@ class VisionMazeEnv(gym.Env):
         self.not_moved_penalty = -1
         self.goal_state = [self.max_pos, self.max_pos]
         self._obs = np.zeros(obs_space)
-        self.max_steps = 999
+        self.max_steps = 10
         self._reset()
 
     def _get_obs(self):
@@ -33,6 +33,20 @@ class VisionMazeEnv(gym.Env):
         x = np.random.randint(self.max_pos)
         y = np.random.randint(self.max_pos)
         self.state = np.array([x, y])
+
+        room_x = x % self.room_length
+        room_y = y % self.room_length
+
+        self.target_room_x, self.target_room_y = room_x + 1, room_y  # rightside room
+        if self.target_room_x == self.num_rooms_per_side:
+            # left then down
+            self.target_room_x -= 1
+            self.target_room_y -= 1
+        if self.target_room_y == -1:
+            # up then left
+            self.target_room_y += 1
+            self.target_room_x -= 1
+
         return self._get_obs()
 
     def _step(self, a):
@@ -52,8 +66,11 @@ class VisionMazeEnv(gym.Env):
         else:
             x = self._step_left(x, y)
 
+        room_x = x % self.room_length
+        room_y = y % self.room_length
+
         r, done = 0, False
-        if x == self.goal_state[0] and y == self.goal_state[1]:
+        if room_x == self.target_room_x and room_y == self.target_room_y:
             r, done = self.goal_reward, True
         elif x == ox and y == oy:
             r = self.not_moved_penalty
